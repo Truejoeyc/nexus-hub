@@ -1,0 +1,728 @@
+openapi: 3.1.0
+info:
+  title: OpenNexus Agent API
+  description: >
+    REST API exposing all AI tools and agents under the OpenNexus Hypercore system.
+    Includes core tools, sandboxed environments, AI agents, planners, and MCP dispatcher.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Local OpenNexus runtime server
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+      description: "API key to authorize requests"
+
+  schemas:
+    CommandRequest:
+      type: object
+      properties:
+        command:
+          type: string
+      required:
+        - command
+      example:
+        command: "ls -la /workspace"
+
+    OutputResponse:
+      type: object
+      properties:
+        output:
+          type: string
+      example:
+        output: "total 8\n-rw-r--r-- 1 user user 123 Nov 1 09:00 README.md"
+
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+      required:
+        - query
+      example:
+        query: "OpenNexus Hypercore documentation"
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              link:
+                type: string
+              snippet:
+                type: string
+      example:
+        results:
+          - title: "OpenNexus Home"
+            link: "https://opennexus.example/docs"
+            snippet: "OpenNexus is a hypercore-based runtime..."
+
+    CodeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+      required:
+        - code
+      example:
+        code: "print('hello world')"
+
+    AskHumanRequest:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+      example:
+        message: "Can you confirm the desired dataset to use?"
+
+    VisualizationRequest:
+      type: object
+      properties:
+        data:
+          type: object
+        chart_type:
+          type: string
+      required:
+        - data
+        - chart_type
+      example:
+        data:
+          x: [1,2,3]
+          y: [10,20,30]
+        chart_type: "line"
+
+    BrowserActionRequest:
+      type: object
+      properties:
+        action:
+          type: string
+        target:
+          type: string
+      required:
+        - action
+      example:
+        action: "click"
+        target: "#submit-button"
+
+    FileOpRequest:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: ["read","write","delete","stat"]
+        path:
+          type: string
+        content:
+          type: string
+      required:
+        - operation
+        - path
+      example:
+        operation: "read"
+        path: "/data/config.yaml"
+
+    ToolCallRequest:
+      type: object
+      properties:
+        tool_string:
+          type: string
+      required:
+        - tool_string
+      example:
+        tool_string: "search('OpenNexus') | summarize()"
+
+    SandboxFileRequest:
+      type: object
+      properties:
+        action:
+          type: string
+        file_path:
+          type: string
+        content:
+          type: string
+      required:
+        - action
+        - file_path
+      example:
+        action: "write"
+        file_path: "/sandbox/notes.txt"
+        content: "temp notes"
+
+    SandboxVisionRequest:
+      type: object
+      properties:
+        image_url:
+          type: string
+      required:
+        - image_url
+      example:
+        image_url: "https://example.com/image.jpg"
+
+    NexusPromptRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+      required:
+        - prompt
+      example:
+        prompt: "Analyze dataset and propose three preprocessing steps."
+
+    MessageItem:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: ["system","user","assistant"]
+        content:
+          type: string
+      required:
+        - role
+        - content
+
+    StructuredChatRequest:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageItem"
+      required:
+        - messages
+      example:
+        messages:
+          - role: "system"
+            content: "You are a helpful assistant."
+          - role: "user"
+            content: "Summarize the OpenNexus API."
+
+    McpTaskRequest:
+      type: object
+      properties:
+        task:
+          type: string
+      required:
+        - task
+      example:
+        task: "dispatch:analyze_logs"
+
+  responses:
+    BadRequest:
+      description: "Invalid request"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+          example:
+            error: "Missing required field 'command'"
+
+    Unauthorized:
+      description: "Unauthorized"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+          example:
+            error: "API key missing or invalid"
+
+paths:
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service health
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+              example:
+                status: "ok"
+
+  /tools/bash:
+    post:
+      operationId: runBash
+      summary: Run a bash command
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+            examples:
+              run:
+                summary: Simple ls
+                value:
+                  command: "ls -la"
+      responses:
+        '200':
+          description: Command output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutputResponse"
+        '400':
+          $ref: "#/components/responses/BadRequest"
+        '401':
+          $ref: "#/components/responses/Unauthorized"
+
+  /tools/web_search:
+    post:
+      operationId: webSearch
+      summary: Perform a web search using DuckDuckGo or Google
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+            examples:
+              q:
+                summary: Search query example
+                value:
+                  query: "OpenNexus Hypercore"
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        '400':
+          $ref: "#/components/responses/BadRequest"
+
+  /tools/python:
+    post:
+      operationId: runPythonCode
+      summary: Execute Python code and return output
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CodeRequest"
+            examples:
+              hello:
+                summary: Hello world example
+                value:
+                  code: "print('hello world')"
+      responses:
+        '200':
+          description: Output from Python interpreter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutputResponse"
+        '400':
+          $ref: "#/components/responses/BadRequest"
+
+  /tools/ask_human:
+    post:
+      operationId: askHuman
+      summary: Ask a human user a question
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskHumanRequest"
+            examples:
+              confirm:
+                summary: Confirmation request
+                value:
+                  message: "Do you want to proceed with deletion?"
+      responses:
+        '200':
+          description: User response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+              example:
+                response: "Yes, proceed."
+        '400':
+          $ref: "#/components/responses/BadRequest"
+
+  /tools/terminate:
+    post:
+      operationId: terminateSession
+      summary: End the agent or tool session
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Session terminated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+              example:
+                status: "terminated"
+
+  /tools/visualize:
+    post:
+      operationId: visualizeData
+      summary: Generate plots or charts from data
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisualizationRequest"
+            examples:
+              line_example:
+                summary: Line chart
+                value:
+                  data:
+                    x: [1,2,3]
+                    y: [2,4,6]
+                  chart_type: "line"
+      responses:
+        '200':
+          description: Visualization result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  image_url:
+                    type: string
+              example:
+                image_url: "http://localhost:8000/visuals/plot_123.png"
+
+  /tools/browser_use:
+    post:
+      operationId: browserControl
+      summary: Simulate browser input and interaction
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserActionRequest"
+            examples:
+              click:
+                summary: Click example
+                value:
+                  action: "click"
+                  target: "#login"
+      responses:
+        '200':
+          description: Action result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+              example:
+                result: "clicked #login"
+        '400':
+          $ref: "#/components/responses/BadRequest"
+
+  /tools/file_ops:
+    post:
+      operationId: fileOperations
+      summary: Perform file system operations (read/write/delete)
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileOpRequest"
+            examples:
+              read_example:
+                summary: Read file
+                value:
+                  operation: "read"
+                  path: "/data/config.yaml"
+      responses:
+        '200':
+          description: Result of file operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+              example:
+                result: "file contents..."
+        '400':
+          $ref: "#/components/responses/BadRequest"
+
+  /tools/toolcall:
+    post:
+      operationId: toolCallExec
+      summary: Execute a tool via string input (ToolCall)
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolCallRequest"
+            examples:
+              pipeline:
+                summary: Example pipeline call
+                value:
+                  tool_string: "search('OpenNexus') | summarize()"
+      responses:
+        '200':
+          description: Tool response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  output:
+                    type: string
+              example:
+                output: "Summary of search results..."
+        '400':
+          $ref: "#/components/responses/BadRequest"
+
+  /sandbox/shell:
+    post:
+      operationId: sandboxShell
+      summary: Run shell command inside sandbox
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+            examples:
+              echo:
+                summary: Echo example
+                value:
+                  command: "echo hello"
+      responses:
+        '200':
+          description: Command output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutputResponse"
+
+  /sandbox/files:
+    post:
+      operationId: sandboxFiles
+      summary: File operations in sandbox
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxFileRequest"
+            examples:
+              write_note:
+                summary: Write a file in sandbox
+                value:
+                  action: "write"
+                  file_path: "/sandbox/notes.txt"
+                  content: "temporary notes"
+      responses:
+        '200':
+          description: File operation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+              example:
+                status: "written"
+
+  /sandbox/vision:
+    post:
+      operationId: sandboxVision
+      summary: Process and analyze images in sandbox
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxVisionRequest"
+            examples:
+              face_detect:
+                summary: Face detection example
+                value:
+                  image_url: "https://example.com/face.jpg"
+      responses:
+        '200':
+          description: Vision result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detections:
+                    type: array
+                    items:
+                      type: object
+              example:
+                detections:
+                  - label: "face"
+                    confidence: 0.98
+
+  /nexus/run:
+    post:
+      operationId: runNexusAgent
+      summary: Run Nexus ToolCall agent
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NexusPromptRequest"
+            examples:
+              analyze:
+                summary: Nexus prompt example
+                value:
+                  prompt: "Plan and run data ingestion pipeline."
+      responses:
+        '200':
+          description: Nexus response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan:
+                    type: string
+              example:
+                plan: "Step 1: fetch, Step 2: validate..."
+
+  /nexus/structured_chat:
+    post:
+      operationId: structuredChat
+      summary: Conduct a structured multi-turn conversation
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StructuredChatRequest"
+      responses:
+        '200':
+          description: Structured chat response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MessageItem"
+              example:
+                messages:
+                  - role: "assistant"
+                    content: "Here's a summary..."
+
+  /mcp/run:
+    post:
+      operationId: runMcpAgent
+      summary: Use MCP to dispatch tool logic
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpTaskRequest"
+      responses:
+        '200':
+          description: Dispatched tool result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  task_id:
+                    type: string
+              example:
+                status: "dispatched"
+                task_id: "mcp-abc-123"
+
+  /mcp/list:
+    get:
+      operationId: listTools
+      summary: List all registered tools
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Tool list as JSON
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example:
+                - "tools/bash"
+                - "tools/python"
+        '401':
+          $ref: "#/components/responses/Unauthorized"
